@@ -1,93 +1,72 @@
 import time
-import math
-from adafruit_servokit import ServoKit
+import robot
+import gc
 
-# Set up servos
-kit = ServoKit(channels=16)
-# FL
-kit.servo[0].actuation_range = 140
-kit.servo[1].actuation_range = 140
-kit.servo[2].actuation_range = 140
+Spot = robot.Robot()
+print(gc.mem_free())
 
-# FR
-kit.servo[3].actuation_range = 140
-kit.servo[4].actuation_range = 130
-kit.servo[5].actuation_range = 130
+Lspan: float = 40
+dL: float = 20
+floor: float = -170
+delta: float = 10
+swing: list[list[float]] = [[-Lspan, floor],
+                            [-Lspan - dL, floor],
+                            [-60, -140],
+                            [-60, -140],
+                            [-60, -140],
+                            [60, -130],
+                            [60, -130],
+                            [60, -140],
+                            [Lspan + dL, floor],
+                            [Lspan, floor]]
 
-curX = -11.126
-curY = -28.761
+stance: list[list[float]] = [[Lspan, floor],
+                             [0, floor - delta],
+                             [-Lspan, floor]]
+vd: float = 40  # mm/s
+print(gc.mem_free())
+T_stance: float = 2 * Lspan / vd
+T_swing: float = 0.25
+T_stride: float = T_stance + T_swing
+dS_trot: list[float] = [0, 0.5, 0.5, 0]
 
-
-def invkin(x, y):
-    l1 = 111.126
-    l2 = 118.5
-    a2 = math.acos((x ** 2 + y ** 2 - l1 ** 2 - l2 ** 2) / (2 * l1 * l2))
-    a1 = math.atan2(y, x) - math.atan2(l2 * math.sin(a2), l1 + l2 * math.cos(a2))
-    a2 = math.degrees(a2)
-    a1 = math.degrees(a1)
-    return a1, a2
-
-
-def homeLegs():
-    kit.servo[1].angle = 70
-    kit.servo[2].angle = 0
-
-    kit.servo[3].angle = 60
-    kit.servo[4].angle = 60
-
-    kit.servo[4].angle = 65
-    kit.servo[5].angle = 130
-
-
-def commandFL(x, y):
-    alpha1, alpha2 = invkin(x, y)
-    print("Calculated Angles: ", alpha1, alpha2)
-    a1 = complement(alpha1) + kit.servo[1].actuation_range/2 + 15
-    a2 = complement(alpha2) - 15
-    print("Commanded Angles: ", a1, a2)
-    kit.servo[1].angle = a1
-    kit.servo[2].angle = a2
-
-
-
-def commandFR(x, y):
-    alpha1, alpha2 = invkin(x, y)
-    print("Calculated Angles: ", alpha1, alpha2)
-    a1 = complement(-alpha1)+ kit.servo[4].actuation_range / 2 - 15
-    a2 = kit.servo[5].actuation_range - (180-alpha2) + 15
-    print("Commanded Angles: ", a1, a2)
-    kit.servo[4].angle = a1
-    kit.servo[5].angle = a2
-
-
-def complement(angle):
-    if angle < 0:
-        return (-180-angle)
-    return (180-angle)
-
-
-# def moveTo(x, y, curX, curY):
-#     diffX = x - curX
-#     diffY = y - curY
-#     print("Diffs: ", diffX, diffY)
-#     stepX = 1 / diffX
-#     stepY = 1 / diffY
-#     while abs(diffX) > 1e-2 and abs(diffY) > 1e-2:
-#         commandLeg(curX + stepX, curY + stepY)
-#         curX += stepX
-#         curY += stepY
-#         diffX = x - curX
-#         diffY = y - curY
-#         print("Diffs: ", diffX, diffY)
-#         time.sleep(0.001)
-
-
+print(gc.mem_free())
 # Setup and Calibration Step
-homeLegs()
-time.sleep(0.5)
+Spot.homeLegs()
+Spot.commandFL(0, -118.5)
+Spot.commandFR(0, -118.5)
+Spot.commandBL(0, -118.5)
+Spot.commandBR(0, -118.5)
+time.sleep(1)
+gc.collect()
 
-x = -111.126
-y = -118.5
-commandFL(x, y)
-commandFR(x, y)
-time.sleep(0.01)
+# Actual Program
+
+t: float = 0
+# One swing of the leg
+pos: list[float] = [0, 0]
+while t <= T_stride:
+    for i in range(4):
+        pos: list[float] = [0, 0]
+        # Stance
+        t_i: float = (t + T_stride * dS_trot[i]) % T_stride
+        if t_i <= T_stance:
+            pos = robot.bezier(t_i / T_stance, stance)
+            gc.collect()
+        # Swing
+        else:
+            pos = robot.bezier((t_i - T_stance) / T_swing, swing)
+            gc.collect()
+        if i == 0:
+            Spot.commandFL(pos[0], pos[1])
+        elif i == 1:
+            Spot.commandFR(pos[0], pos[1])
+        elif i == 2:
+            Spot.commandBL(pos[0], pos[1])
+        elif i == 3:
+            Spot.commandBR(pos[0], pos[1])
+        gc.collect()
+    t += 0.05
+
+# Finish up and reset robot positions
+Spot.homeLegs()
