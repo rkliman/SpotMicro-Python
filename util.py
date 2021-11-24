@@ -22,8 +22,7 @@ def complement(angle: float):
 # l2 = 118.5
 def invkin(x: float, y: float):
     a2: float = math.degrees(math.acos((x ** 2 + y ** 2 - 111.126 ** 2 - 118.5 ** 2) / (2 * 111.126 * 118.5)))
-    a1: float = math.degrees(
-        math.atan2(y, x) - math.atan2(118.5 * math.sin(math.radians(a2)), 111.126 + 118.5 * math.cos(math.radians(a2))))
+    a1: float = math.degrees(math.atan2(y, x) - math.atan2(118.5 * math.sin(math.radians(a2)), 111.126 + 118.5 * math.cos(math.radians(a2))))
     return a1, a2
 
 
